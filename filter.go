@@ -1,4 +1,4 @@
-package rtreego
+package rtree
 
 // Filter is an interface for filtering leaves during search. The parameters
 // should be treated as read-only. If refuse is true, the currenty entry will

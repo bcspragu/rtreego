@@ -1,4 +1,4 @@
-package rtreego
+package rtree
 
 import (
 	"fmt"
@@ -9,12 +9,12 @@ import (
 	"testing"
 )
 
-func (r *Rect) Bounds() *Rect {
+func (r *BBox) Bounds() *BBox {
 	return r
 }
 
-func mustRect(p Point, widths []float64) *Rect {
-	r, err := NewRect(p, widths)
+func mustBBox(p Point, widths []float64) *BBox {
+	r, err := NewBBox(p, widths[0], widths[1])
 	if err != nil {
 		panic(err)
 	}
@@ -87,31 +87,31 @@ func indexOf(objs []Spatial, obj Spatial) int {
 }
 
 var chooseLeafNodeTests = []struct {
-	bb0, bb1, bb2 *Rect // leaf bounding boxes
+	bb0, bb1, bb2 *BBox // leaf bounding boxes
 	exp           int   // expected chosen leaf
 	desc          string
 	level         int
 }{
 	{
-		mustRect(Point{1, 1, 1}, []float64{1, 1, 1}),
-		mustRect(Point{-1, -1, -1}, []float64{0.5, 0.5, 0.5}),
-		mustRect(Point{3, 4, -5}, []float64{2, 0.9, 8}),
+		mustBBox(Point{1, 1}, []float64{1, 1}),
+		mustBBox(Point{-1, -1}, []float64{0.5, 0.5}),
+		mustBBox(Point{4, -5}, []float64{0.9, 8}),
 		1,
 		"clear winner",
 		1,
 	},
 	{
-		mustRect(Point{-1, -1.5, -1}, []float64{0.5, 2.5025, 0.5}),
-		mustRect(Point{0.5, 1, 0.5}, []float64{0.5, 0.815, 0.5}),
-		mustRect(Point{3, 4, -5}, []float64{2, 0.9, 8}),
+		mustBBox(Point{-1.5, -1}, []float64{2.5025, 0.5}),
+		mustBBox(Point{1, 0.5}, []float64{0.815, 0.5}),
+		mustBBox(Point{4, -5}, []float64{0.9, 8}),
 		1,
 		"leaves tie",
 		1,
 	},
 	{
-		mustRect(Point{-1, -1.5, -1}, []float64{0.5, 2.5025, 0.5}),
-		mustRect(Point{0.5, 1, 0.5}, []float64{0.5, 0.815, 0.5}),
-		mustRect(Point{-1, -2, -3}, []float64{2, 4, 6}),
+		mustBBox(Point{-1.5, -1}, []float64{2.5025, 0.5}),
+		mustBBox(Point{1, 0.5}, []float64{0.815, 0.5}),
+		mustBBox(Point{-2, -3}, []float64{4, 6}),
 		2,
 		"leaf contains obj",
 		1,
@@ -119,8 +119,8 @@ var chooseLeafNodeTests = []struct {
 }
 
 func TestChooseLeafNodeEmpty(t *testing.T) {
-	rt := NewTree(3, 5, 10)
-	obj := Point{0, 0, 0}.ToRect(0.5)
+	rt := NewTree(5, 10)
+	obj := Point{0, 0}.ToBBox(0.5)
 	e := entry{obj, nil, obj}
 	if leaf := rt.chooseNode(rt.root, e, 1); leaf != rt.root {
 		t.Errorf("expected chooseLeaf of empty tree to return root")
@@ -143,7 +143,7 @@ func TestChooseLeafNode(t *testing.T) {
 
 		rt.root.entries = []entry{entry0, entry1, entry2}
 
-		obj := Point{0, 0, 0}.ToRect(0.5)
+		obj := Point{0, 0}.ToBBox(0.5)
 		e := entry{obj, nil, obj}
 
 		expected := rt.root.entries[test.exp].child
@@ -154,9 +154,9 @@ func TestChooseLeafNode(t *testing.T) {
 }
 
 func TestPickSeeds(t *testing.T) {
-	entry1 := entry{bb: mustRect(Point{1, 1}, []float64{1, 1})}
-	entry2 := entry{bb: mustRect(Point{1, -1}, []float64{2, 1})}
-	entry3 := entry{bb: mustRect(Point{-1, -1}, []float64{1, 2})}
+	entry1 := entry{bb: mustBBox(Point{1, 1}, []float64{1, 1})}
+	entry2 := entry{bb: mustBBox(Point{1, -1}, []float64{2, 1})}
+	entry3 := entry{bb: mustBBox(Point{-1, -1}, []float64{1, 2})}
 	n := node{entries: []entry{entry1, entry2, entry3}}
 	left, right := n.pickSeeds()
 	if n.entries[left] != entry1 || n.entries[right] != entry3 {
@@ -165,15 +165,15 @@ func TestPickSeeds(t *testing.T) {
 }
 
 func TestPickNext(t *testing.T) {
-	leftEntry := entry{bb: mustRect(Point{1, 1}, []float64{1, 1})}
+	leftEntry := entry{bb: mustBBox(Point{1, 1}, []float64{1, 1})}
 	left := &node{entries: []entry{leftEntry}}
 
-	rightEntry := entry{bb: mustRect(Point{-1, -1}, []float64{1, 2})}
+	rightEntry := entry{bb: mustBBox(Point{-1, -1}, []float64{1, 2})}
 	right := &node{entries: []entry{rightEntry}}
 
-	entry1 := entry{bb: mustRect(Point{0, 0}, []float64{1, 1})}
-	entry2 := entry{bb: mustRect(Point{-2, -2}, []float64{1, 1})}
-	entry3 := entry{bb: mustRect(Point{1, 2}, []float64{1, 1})}
+	entry1 := entry{bb: mustBBox(Point{0, 0}, []float64{1, 1})}
+	entry2 := entry{bb: mustBBox(Point{-2, -2}, []float64{1, 1})}
+	entry3 := entry{bb: mustBBox(Point{1, 2}, []float64{1, 1})}
 	entries := []entry{entry1, entry2, entry3}
 
 	chosen := pickNext(left, right, entries)
@@ -183,34 +183,34 @@ func TestPickNext(t *testing.T) {
 }
 
 func TestSplit(t *testing.T) {
-	entry1 := entry{bb: mustRect(Point{-3, -1}, []float64{2, 1})}
-	entry2 := entry{bb: mustRect(Point{1, 2}, []float64{1, 1})}
-	entry3 := entry{bb: mustRect(Point{-1, 0}, []float64{1, 1})}
-	entry4 := entry{bb: mustRect(Point{-3, -3}, []float64{1, 1})}
-	entry5 := entry{bb: mustRect(Point{1, -1}, []float64{2, 2})}
+	entry1 := entry{bb: mustBBox(Point{-3, -1}, []float64{2, 1})}
+	entry2 := entry{bb: mustBBox(Point{1, 2}, []float64{1, 1})}
+	entry3 := entry{bb: mustBBox(Point{-1, 0}, []float64{1, 1})}
+	entry4 := entry{bb: mustBBox(Point{-3, -3}, []float64{1, 1})}
+	entry5 := entry{bb: mustBBox(Point{1, -1}, []float64{2, 2})}
 	entries := []entry{entry1, entry2, entry3, entry4, entry5}
 	n := &node{entries: entries}
 
 	l, r := n.split(0) // left=entry2, right=entry4
-	expLeft := mustRect(Point{1, -1}, []float64{2, 4})
-	expRight := mustRect(Point{-3, -3}, []float64{3, 4})
+	expLeft := mustBBox(Point{1, -1}, []float64{2, 4})
+	expRight := mustBBox(Point{-3, -3}, []float64{3, 4})
 
 	lbb := l.computeBoundingBox()
 	rbb := r.computeBoundingBox()
-	if lbb.p.dist(expLeft.p) >= EPS || lbb.q.dist(expLeft.q) >= EPS {
+	if lbb.min.dist(expLeft.min) >= EPS || lbb.max.dist(expLeft.max) >= EPS {
 		t.Errorf("expected left.bb = %s, got %s", expLeft, lbb)
 	}
-	if rbb.p.dist(expRight.p) >= EPS || rbb.q.dist(expRight.q) >= EPS {
+	if rbb.min.dist(expRight.min) >= EPS || rbb.max.dist(expRight.max) >= EPS {
 		t.Errorf("expected right.bb = %s, got %s", expRight, rbb)
 	}
 }
 
 func TestSplitUnderflow(t *testing.T) {
-	entry1 := entry{bb: mustRect(Point{0, 0}, []float64{1, 1})}
-	entry2 := entry{bb: mustRect(Point{0, 1}, []float64{1, 1})}
-	entry3 := entry{bb: mustRect(Point{0, 2}, []float64{1, 1})}
-	entry4 := entry{bb: mustRect(Point{0, 3}, []float64{1, 1})}
-	entry5 := entry{bb: mustRect(Point{-50, -50}, []float64{1, 1})}
+	entry1 := entry{bb: mustBBox(Point{0, 0}, []float64{1, 1})}
+	entry2 := entry{bb: mustBBox(Point{0, 1}, []float64{1, 1})}
+	entry3 := entry{bb: mustBBox(Point{0, 2}, []float64{1, 1})}
+	entry4 := entry{bb: mustBBox(Point{0, 3}, []float64{1, 1})}
+	entry5 := entry{bb: mustBBox(Point{-50, -50}, []float64{1, 1})}
 	entries := []entry{entry1, entry2, entry3, entry4, entry5}
 	n := &node{entries: entries}
 
@@ -222,11 +222,11 @@ func TestSplitUnderflow(t *testing.T) {
 }
 
 func TestAssignGroupLeastEnlargement(t *testing.T) {
-	r00 := entry{bb: mustRect(Point{0, 0}, []float64{1, 1})}
-	r01 := entry{bb: mustRect(Point{0, 1}, []float64{1, 1})}
-	r10 := entry{bb: mustRect(Point{1, 0}, []float64{1, 1})}
-	r11 := entry{bb: mustRect(Point{1, 1}, []float64{1, 1})}
-	r02 := entry{bb: mustRect(Point{0, 2}, []float64{1, 1})}
+	r00 := entry{bb: mustBBox(Point{0, 0}, []float64{1, 1})}
+	r01 := entry{bb: mustBBox(Point{0, 1}, []float64{1, 1})}
+	r10 := entry{bb: mustBBox(Point{1, 0}, []float64{1, 1})}
+	r11 := entry{bb: mustBBox(Point{1, 1}, []float64{1, 1})}
+	r02 := entry{bb: mustBBox(Point{0, 2}, []float64{1, 1})}
 
 	group1 := &node{entries: []entry{r00, r01}}
 	group2 := &node{entries: []entry{r10, r11}}
@@ -238,10 +238,10 @@ func TestAssignGroupLeastEnlargement(t *testing.T) {
 }
 
 func TestAssignGroupSmallerArea(t *testing.T) {
-	r00 := entry{bb: mustRect(Point{0, 0}, []float64{1, 1})}
-	r01 := entry{bb: mustRect(Point{0, 1}, []float64{1, 1})}
-	r12 := entry{bb: mustRect(Point{1, 2}, []float64{1, 1})}
-	r02 := entry{bb: mustRect(Point{0, 2}, []float64{1, 1})}
+	r00 := entry{bb: mustBBox(Point{0, 0}, []float64{1, 1})}
+	r01 := entry{bb: mustBBox(Point{0, 1}, []float64{1, 1})}
+	r12 := entry{bb: mustBBox(Point{1, 2}, []float64{1, 1})}
+	r02 := entry{bb: mustBBox(Point{0, 2}, []float64{1, 1})}
 
 	group1 := &node{entries: []entry{r00, r01}}
 	group2 := &node{entries: []entry{r12}}
@@ -253,10 +253,10 @@ func TestAssignGroupSmallerArea(t *testing.T) {
 }
 
 func TestAssignGroupFewerEntries(t *testing.T) {
-	r0001 := entry{bb: mustRect(Point{0, 0}, []float64{1, 2})}
-	r12 := entry{bb: mustRect(Point{1, 2}, []float64{1, 1})}
-	r22 := entry{bb: mustRect(Point{2, 2}, []float64{1, 1})}
-	r02 := entry{bb: mustRect(Point{0, 2}, []float64{1, 1})}
+	r0001 := entry{bb: mustBBox(Point{0, 0}, []float64{1, 2})}
+	r12 := entry{bb: mustBBox(Point{1, 2}, []float64{1, 1})}
+	r22 := entry{bb: mustBBox(Point{2, 2}, []float64{1, 1})}
+	r02 := entry{bb: mustBBox(Point{0, 2}, []float64{1, 1})}
 
 	group1 := &node{entries: []entry{r0001}}
 	group2 := &node{entries: []entry{r12, r22}}
@@ -270,32 +270,32 @@ func TestAssignGroupFewerEntries(t *testing.T) {
 func TestAdjustTreeNoPreviousSplit(t *testing.T) {
 	rt := Rtree{root: &node{}}
 
-	r00 := entry{bb: mustRect(Point{0, 0}, []float64{1, 1})}
-	r01 := entry{bb: mustRect(Point{0, 1}, []float64{1, 1})}
-	r10 := entry{bb: mustRect(Point{1, 0}, []float64{1, 1})}
+	r00 := entry{bb: mustBBox(Point{0, 0}, []float64{1, 1})}
+	r01 := entry{bb: mustBBox(Point{0, 1}, []float64{1, 1})}
+	r10 := entry{bb: mustBBox(Point{1, 0}, []float64{1, 1})}
 	entries := []entry{r00, r01, r10}
 	n := node{rt.root, false, entries, 1}
-	rt.root.entries = []entry{entry{bb: Point{0, 0}.ToRect(0), child: &n}}
+	rt.root.entries = []entry{entry{bb: Point{0, 0}.ToBBox(0), child: &n}}
 
 	rt.adjustTree(&n, nil)
 
 	e := rt.root.entries[0]
 	p, q := Point{0, 0}, Point{2, 2}
-	if p.dist(e.bb.p) >= EPS || q.dist(e.bb.q) >= EPS {
+	if p.dist(e.bb.min) >= EPS || q.dist(e.bb.max) >= EPS {
 		t.Errorf("Expected adjustTree to fit %v,%v,%v", r00.bb, r01.bb, r10.bb)
 	}
 }
 
 func TestAdjustTreeNoSplit(t *testing.T) {
-	rt := NewTree(2, 3, 3)
+	rt := NewTree(3, 3)
 
-	r00 := entry{bb: mustRect(Point{0, 0}, []float64{1, 1})}
-	r01 := entry{bb: mustRect(Point{0, 1}, []float64{1, 1})}
+	r00 := entry{bb: mustBBox(Point{0, 0}, []float64{1, 1})}
+	r01 := entry{bb: mustBBox(Point{0, 1}, []float64{1, 1})}
 	left := node{rt.root, false, []entry{r00, r01}, 1}
-	leftEntry := entry{bb: Point{0, 0}.ToRect(0), child: &left}
+	leftEntry := entry{bb: Point{0, 0}.ToBBox(0), child: &left}
 
-	r10 := entry{bb: mustRect(Point{1, 0}, []float64{1, 1})}
-	r11 := entry{bb: mustRect(Point{1, 1}, []float64{1, 1})}
+	r10 := entry{bb: mustBBox(Point{1, 0}, []float64{1, 1})}
+	r11 := entry{bb: mustBBox(Point{1, 1}, []float64{1, 1})}
 	right := node{rt.root, false, []entry{r10, r11}, 1}
 
 	rt.root.entries = []entry{leftEntry}
@@ -311,24 +311,24 @@ func TestAdjustTreeNoSplit(t *testing.T) {
 	}
 
 	lbb, rbb := entries[0].bb, entries[1].bb
-	if lbb.p.dist(Point{0, 0}) >= EPS || lbb.q.dist(Point{1, 2}) >= EPS {
+	if lbb.min.dist(Point{0, 0}) >= EPS || lbb.max.dist(Point{1, 2}) >= EPS {
 		t.Errorf("Expected adjustTree to adjust left bb")
 	}
-	if rbb.p.dist(Point{1, 0}) >= EPS || rbb.q.dist(Point{2, 2}) >= EPS {
+	if rbb.min.dist(Point{1, 0}) >= EPS || rbb.max.dist(Point{2, 2}) >= EPS {
 		t.Errorf("Expected adjustTree to adjust right bb")
 	}
 }
 
 func TestAdjustTreeSplitParent(t *testing.T) {
-	rt := NewTree(2, 1, 1)
+	rt := NewTree(1, 1)
 
-	r00 := entry{bb: mustRect(Point{0, 0}, []float64{1, 1})}
-	r01 := entry{bb: mustRect(Point{0, 1}, []float64{1, 1})}
+	r00 := entry{bb: mustBBox(Point{0, 0}, []float64{1, 1})}
+	r01 := entry{bb: mustBBox(Point{0, 1}, []float64{1, 1})}
 	left := node{rt.root, false, []entry{r00, r01}, 1}
-	leftEntry := entry{bb: Point{0, 0}.ToRect(0), child: &left}
+	leftEntry := entry{bb: Point{0, 0}.ToBBox(0), child: &left}
 
-	r10 := entry{bb: mustRect(Point{1, 0}, []float64{1, 1})}
-	r11 := entry{bb: mustRect(Point{1, 1}, []float64{1, 1})}
+	r10 := entry{bb: mustBBox(Point{1, 0}, []float64{1, 1})}
+	r11 := entry{bb: mustBBox(Point{1, 1}, []float64{1, 1})}
 	right := node{rt.root, false, []entry{r10, r11}, 1}
 
 	rt.root.entries = []entry{leftEntry}
@@ -339,45 +339,45 @@ func TestAdjustTreeSplitParent(t *testing.T) {
 	}
 
 	lbb, rbb := retl.entries[0].bb, retr.entries[0].bb
-	if lbb.p.dist(Point{0, 0}) >= EPS || lbb.q.dist(Point{1, 2}) >= EPS {
+	if lbb.min.dist(Point{0, 0}) >= EPS || lbb.max.dist(Point{1, 2}) >= EPS {
 		t.Errorf("Expected left split got left entry")
 	}
-	if rbb.p.dist(Point{1, 0}) >= EPS || rbb.q.dist(Point{2, 2}) >= EPS {
+	if rbb.min.dist(Point{1, 0}) >= EPS || rbb.max.dist(Point{2, 2}) >= EPS {
 		t.Errorf("Expected right split got right entry")
 	}
 }
 
 func TestInsertRepeated(t *testing.T) {
-	rt := NewTree(2, 3, 5)
-	thing := mustRect(Point{0, 0}, []float64{2, 1})
+	rt := NewTree(3, 5)
+	thing := mustBBox(Point{0, 0}, []float64{2, 1})
 	for i := 0; i < 6; i++ {
 		rt.Insert(thing)
 	}
 }
 
 func TestInsertNoSplit(t *testing.T) {
-	rt := NewTree(2, 3, 3)
-	thing := mustRect(Point{0, 0}, []float64{2, 1})
+	rt := NewTree(3, 3)
+	thing := mustBBox(Point{0, 0}, []float64{2, 1})
 	rt.Insert(thing)
 
 	if rt.Size() != 1 {
 		t.Errorf("Insert failed to increase tree size")
 	}
 
-	if len(rt.root.entries) != 1 || rt.root.entries[0].obj.(*Rect) != thing {
+	if len(rt.root.entries) != 1 || rt.root.entries[0].obj.(*BBox) != thing {
 		t.Errorf("Insert failed to insert thing into root entries")
 	}
 }
 
 func TestInsertSplitRoot(t *testing.T) {
-	rt := NewTree(2, 3, 3)
-	things := []*Rect{
-		mustRect(Point{0, 0}, []float64{2, 1}),
-		mustRect(Point{3, 1}, []float64{1, 2}),
-		mustRect(Point{1, 2}, []float64{2, 2}),
-		mustRect(Point{8, 6}, []float64{1, 1}),
-		mustRect(Point{10, 3}, []float64{1, 2}),
-		mustRect(Point{11, 7}, []float64{1, 1}),
+	rt := NewTree(3, 3)
+	things := []*BBox{
+		mustBBox(Point{0, 0}, []float64{2, 1}),
+		mustBBox(Point{3, 1}, []float64{1, 2}),
+		mustBBox(Point{1, 2}, []float64{2, 2}),
+		mustBBox(Point{8, 6}, []float64{1, 1}),
+		mustBBox(Point{10, 3}, []float64{1, 2}),
+		mustBBox(Point{11, 7}, []float64{1, 1}),
 	}
 	for _, thing := range things {
 		rt.Insert(thing)
@@ -398,15 +398,15 @@ func TestInsertSplitRoot(t *testing.T) {
 }
 
 func TestInsertSplit(t *testing.T) {
-	rt := NewTree(2, 3, 3)
-	things := []*Rect{
-		mustRect(Point{0, 0}, []float64{2, 1}),
-		mustRect(Point{3, 1}, []float64{1, 2}),
-		mustRect(Point{1, 2}, []float64{2, 2}),
-		mustRect(Point{8, 6}, []float64{1, 1}),
-		mustRect(Point{10, 3}, []float64{1, 2}),
-		mustRect(Point{11, 7}, []float64{1, 1}),
-		mustRect(Point{10, 10}, []float64{2, 2}),
+	rt := NewTree(3, 3)
+	things := []*BBox{
+		mustBBox(Point{0, 0}, []float64{2, 1}),
+		mustBBox(Point{3, 1}, []float64{1, 2}),
+		mustBBox(Point{1, 2}, []float64{2, 2}),
+		mustBBox(Point{8, 6}, []float64{1, 1}),
+		mustBBox(Point{10, 3}, []float64{1, 2}),
+		mustBBox(Point{11, 7}, []float64{1, 1}),
+		mustBBox(Point{10, 10}, []float64{2, 2}),
 	}
 	for _, thing := range things {
 		rt.Insert(thing)
@@ -429,18 +429,18 @@ func TestInsertSplit(t *testing.T) {
 }
 
 func TestInsertSplitSecondLevel(t *testing.T) {
-	rt := NewTree(2, 3, 3)
-	things := []*Rect{
-		mustRect(Point{0, 0}, []float64{2, 1}),
-		mustRect(Point{3, 1}, []float64{1, 2}),
-		mustRect(Point{1, 2}, []float64{2, 2}),
-		mustRect(Point{8, 6}, []float64{1, 1}),
-		mustRect(Point{10, 3}, []float64{1, 2}),
-		mustRect(Point{11, 7}, []float64{1, 1}),
-		mustRect(Point{0, 6}, []float64{1, 2}),
-		mustRect(Point{1, 6}, []float64{1, 2}),
-		mustRect(Point{0, 8}, []float64{1, 2}),
-		mustRect(Point{1, 8}, []float64{1, 2}),
+	rt := NewTree(3, 3)
+	things := []*BBox{
+		mustBBox(Point{0, 0}, []float64{2, 1}),
+		mustBBox(Point{3, 1}, []float64{1, 2}),
+		mustBBox(Point{1, 2}, []float64{2, 2}),
+		mustBBox(Point{8, 6}, []float64{1, 1}),
+		mustBBox(Point{10, 3}, []float64{1, 2}),
+		mustBBox(Point{11, 7}, []float64{1, 1}),
+		mustBBox(Point{0, 6}, []float64{1, 2}),
+		mustBBox(Point{1, 6}, []float64{1, 2}),
+		mustBBox(Point{0, 8}, []float64{1, 2}),
+		mustBBox(Point{1, 8}, []float64{1, 2}),
 	}
 	for _, thing := range things {
 		rt.Insert(thing)
@@ -476,18 +476,18 @@ func TestInsertSplitSecondLevel(t *testing.T) {
 }
 
 func TestFindLeaf(t *testing.T) {
-	rt := NewTree(2, 3, 3)
-	things := []*Rect{
-		mustRect(Point{0, 0}, []float64{2, 1}),
-		mustRect(Point{3, 1}, []float64{1, 2}),
-		mustRect(Point{1, 2}, []float64{2, 2}),
-		mustRect(Point{8, 6}, []float64{1, 1}),
-		mustRect(Point{10, 3}, []float64{1, 2}),
-		mustRect(Point{11, 7}, []float64{1, 1}),
-		mustRect(Point{0, 6}, []float64{1, 2}),
-		mustRect(Point{1, 6}, []float64{1, 2}),
-		mustRect(Point{0, 8}, []float64{1, 2}),
-		mustRect(Point{1, 8}, []float64{1, 2}),
+	rt := NewTree(3, 3)
+	things := []*BBox{
+		mustBBox(Point{0, 0}, []float64{2, 1}),
+		mustBBox(Point{3, 1}, []float64{1, 2}),
+		mustBBox(Point{1, 2}, []float64{2, 2}),
+		mustBBox(Point{8, 6}, []float64{1, 1}),
+		mustBBox(Point{10, 3}, []float64{1, 2}),
+		mustBBox(Point{11, 7}, []float64{1, 1}),
+		mustBBox(Point{0, 6}, []float64{1, 2}),
+		mustBBox(Point{1, 6}, []float64{1, 2}),
+		mustBBox(Point{0, 8}, []float64{1, 2}),
+		mustBBox(Point{1, 8}, []float64{1, 2}),
 	}
 	for _, thing := range things {
 		rt.Insert(thing)
@@ -499,10 +499,10 @@ func TestFindLeaf(t *testing.T) {
 			printNode(rt.root, 0)
 			t.Errorf("Unable to find leaf containing an entry after insertion!")
 		}
-		var found *Rect
+		var found *BBox
 		for _, other := range leaf.entries {
 			if other.obj == thing {
-				found = other.obj.(*Rect)
+				found = other.obj.(*BBox)
 				break
 			}
 		}
@@ -515,24 +515,24 @@ func TestFindLeaf(t *testing.T) {
 }
 
 func TestFindLeafDoesNotExist(t *testing.T) {
-	rt := NewTree(2, 3, 3)
-	things := []*Rect{
-		mustRect(Point{0, 0}, []float64{2, 1}),
-		mustRect(Point{3, 1}, []float64{1, 2}),
-		mustRect(Point{1, 2}, []float64{2, 2}),
-		mustRect(Point{8, 6}, []float64{1, 1}),
-		mustRect(Point{10, 3}, []float64{1, 2}),
-		mustRect(Point{11, 7}, []float64{1, 1}),
-		mustRect(Point{0, 6}, []float64{1, 2}),
-		mustRect(Point{1, 6}, []float64{1, 2}),
-		mustRect(Point{0, 8}, []float64{1, 2}),
-		mustRect(Point{1, 8}, []float64{1, 2}),
+	rt := NewTree(3, 3)
+	things := []*BBox{
+		mustBBox(Point{0, 0}, []float64{2, 1}),
+		mustBBox(Point{3, 1}, []float64{1, 2}),
+		mustBBox(Point{1, 2}, []float64{2, 2}),
+		mustBBox(Point{8, 6}, []float64{1, 1}),
+		mustBBox(Point{10, 3}, []float64{1, 2}),
+		mustBBox(Point{11, 7}, []float64{1, 1}),
+		mustBBox(Point{0, 6}, []float64{1, 2}),
+		mustBBox(Point{1, 6}, []float64{1, 2}),
+		mustBBox(Point{0, 8}, []float64{1, 2}),
+		mustBBox(Point{1, 8}, []float64{1, 2}),
 	}
 	for _, thing := range things {
 		rt.Insert(thing)
 	}
 
-	obj := mustRect(Point{99, 99}, []float64{99, 99})
+	obj := mustBBox(Point{99, 99}, []float64{99, 99})
 	leaf := rt.findLeaf(rt.root, obj, defaultComparator)
 	if leaf != nil {
 		t.Errorf("findLeaf failed to return nil for non-existent object")
@@ -540,18 +540,18 @@ func TestFindLeafDoesNotExist(t *testing.T) {
 }
 
 func TestCondenseTreeEliminate(t *testing.T) {
-	rt := NewTree(2, 3, 3)
-	things := []*Rect{
-		mustRect(Point{0, 0}, []float64{2, 1}),
-		mustRect(Point{3, 1}, []float64{1, 2}),
-		mustRect(Point{1, 2}, []float64{2, 2}),
-		mustRect(Point{8, 6}, []float64{1, 1}),
-		mustRect(Point{10, 3}, []float64{1, 2}),
-		mustRect(Point{11, 7}, []float64{1, 1}),
-		mustRect(Point{0, 6}, []float64{1, 2}),
-		mustRect(Point{1, 6}, []float64{1, 2}),
-		mustRect(Point{0, 8}, []float64{1, 2}),
-		mustRect(Point{1, 8}, []float64{1, 2}),
+	rt := NewTree(3, 3)
+	things := []*BBox{
+		mustBBox(Point{0, 0}, []float64{2, 1}),
+		mustBBox(Point{3, 1}, []float64{1, 2}),
+		mustBBox(Point{1, 2}, []float64{2, 2}),
+		mustBBox(Point{8, 6}, []float64{1, 1}),
+		mustBBox(Point{10, 3}, []float64{1, 2}),
+		mustBBox(Point{11, 7}, []float64{1, 1}),
+		mustBBox(Point{0, 6}, []float64{1, 2}),
+		mustBBox(Point{1, 6}, []float64{1, 2}),
+		mustBBox(Point{0, 8}, []float64{1, 2}),
+		mustBBox(Point{1, 8}, []float64{1, 2}),
 	}
 	for _, thing := range things {
 		rt.Insert(thing)
@@ -575,24 +575,24 @@ func TestCondenseTreeEliminate(t *testing.T) {
 }
 
 func TestChooseNodeNonLeaf(t *testing.T) {
-	rt := NewTree(2, 3, 3)
-	things := []*Rect{
-		mustRect(Point{0, 0}, []float64{2, 1}),
-		mustRect(Point{3, 1}, []float64{1, 2}),
-		mustRect(Point{1, 2}, []float64{2, 2}),
-		mustRect(Point{8, 6}, []float64{1, 1}),
-		mustRect(Point{10, 3}, []float64{1, 2}),
-		mustRect(Point{11, 7}, []float64{1, 1}),
-		mustRect(Point{0, 6}, []float64{1, 2}),
-		mustRect(Point{1, 6}, []float64{1, 2}),
-		mustRect(Point{0, 8}, []float64{1, 2}),
-		mustRect(Point{1, 8}, []float64{1, 2}),
+	rt := NewTree(3, 3)
+	things := []*BBox{
+		mustBBox(Point{0, 0}, []float64{2, 1}),
+		mustBBox(Point{3, 1}, []float64{1, 2}),
+		mustBBox(Point{1, 2}, []float64{2, 2}),
+		mustBBox(Point{8, 6}, []float64{1, 1}),
+		mustBBox(Point{10, 3}, []float64{1, 2}),
+		mustBBox(Point{11, 7}, []float64{1, 1}),
+		mustBBox(Point{0, 6}, []float64{1, 2}),
+		mustBBox(Point{1, 6}, []float64{1, 2}),
+		mustBBox(Point{0, 8}, []float64{1, 2}),
+		mustBBox(Point{1, 8}, []float64{1, 2}),
 	}
 	for _, thing := range things {
 		rt.Insert(thing)
 	}
 
-	obj := mustRect(Point{0, 10}, []float64{1, 2})
+	obj := mustBBox(Point{0, 10}, []float64{1, 2})
 	e := entry{obj, nil, obj}
 	n := rt.chooseNode(rt.root, e, 2)
 	if n.level != 2 {
@@ -601,24 +601,24 @@ func TestChooseNodeNonLeaf(t *testing.T) {
 }
 
 func TestInsertNonLeaf(t *testing.T) {
-	rt := NewTree(2, 3, 3)
-	things := []*Rect{
-		mustRect(Point{0, 0}, []float64{2, 1}),
-		mustRect(Point{3, 1}, []float64{1, 2}),
-		mustRect(Point{1, 2}, []float64{2, 2}),
-		mustRect(Point{8, 6}, []float64{1, 1}),
-		mustRect(Point{10, 3}, []float64{1, 2}),
-		mustRect(Point{11, 7}, []float64{1, 1}),
-		mustRect(Point{0, 6}, []float64{1, 2}),
-		mustRect(Point{1, 6}, []float64{1, 2}),
-		mustRect(Point{0, 8}, []float64{1, 2}),
-		mustRect(Point{1, 8}, []float64{1, 2}),
+	rt := NewTree(3, 3)
+	things := []*BBox{
+		mustBBox(Point{0, 0}, []float64{2, 1}),
+		mustBBox(Point{3, 1}, []float64{1, 2}),
+		mustBBox(Point{1, 2}, []float64{2, 2}),
+		mustBBox(Point{8, 6}, []float64{1, 1}),
+		mustBBox(Point{10, 3}, []float64{1, 2}),
+		mustBBox(Point{11, 7}, []float64{1, 1}),
+		mustBBox(Point{0, 6}, []float64{1, 2}),
+		mustBBox(Point{1, 6}, []float64{1, 2}),
+		mustBBox(Point{0, 8}, []float64{1, 2}),
+		mustBBox(Point{1, 8}, []float64{1, 2}),
 	}
 	for _, thing := range things {
 		rt.Insert(thing)
 	}
 
-	obj := mustRect(Point{99, 99}, []float64{99, 99})
+	obj := mustBBox(Point{99, 99}, []float64{99, 99})
 	e := entry{obj, nil, obj}
 	rt.insert(e, 2)
 
@@ -629,10 +629,10 @@ func TestInsertNonLeaf(t *testing.T) {
 }
 
 func TestDeleteFlatten(t *testing.T) {
-	rt := NewTree(2, 3, 3)
-	things := []*Rect{
-		mustRect(Point{0, 0}, []float64{2, 1}),
-		mustRect(Point{3, 1}, []float64{1, 2}),
+	rt := NewTree(3, 3)
+	things := []*BBox{
+		mustBBox(Point{0, 0}, []float64{2, 1}),
+		mustBBox(Point{3, 1}, []float64{1, 2}),
 	}
 	for _, thing := range things {
 		rt.Insert(thing)
@@ -644,18 +644,18 @@ func TestDeleteFlatten(t *testing.T) {
 }
 
 func TestDelete(t *testing.T) {
-	rt := NewTree(2, 3, 3)
-	things := []*Rect{
-		mustRect(Point{0, 0}, []float64{2, 1}),
-		mustRect(Point{3, 1}, []float64{1, 2}),
-		mustRect(Point{1, 2}, []float64{2, 2}),
-		mustRect(Point{8, 6}, []float64{1, 1}),
-		mustRect(Point{10, 3}, []float64{1, 2}),
-		mustRect(Point{11, 7}, []float64{1, 1}),
-		mustRect(Point{0, 6}, []float64{1, 2}),
-		mustRect(Point{1, 6}, []float64{1, 2}),
-		mustRect(Point{0, 8}, []float64{1, 2}),
-		mustRect(Point{1, 8}, []float64{1, 2}),
+	rt := NewTree(3, 3)
+	things := []*BBox{
+		mustBBox(Point{0, 0}, []float64{2, 1}),
+		mustBBox(Point{3, 1}, []float64{1, 2}),
+		mustBBox(Point{1, 2}, []float64{2, 2}),
+		mustBBox(Point{8, 6}, []float64{1, 1}),
+		mustBBox(Point{10, 3}, []float64{1, 2}),
+		mustBBox(Point{11, 7}, []float64{1, 1}),
+		mustBBox(Point{0, 6}, []float64{1, 2}),
+		mustBBox(Point{1, 6}, []float64{1, 2}),
+		mustBBox(Point{0, 8}, []float64{1, 2}),
+		mustBBox(Point{1, 8}, []float64{1, 2}),
 	}
 	for _, thing := range things {
 		rt.Insert(thing)
@@ -663,7 +663,7 @@ func TestDelete(t *testing.T) {
 
 	verify(t, rt.root)
 
-	things2 := []*Rect{}
+	things2 := []*BBox{}
 	for len(things) > 0 {
 		i := rand.Int() % len(things)
 		things2 = append(things2, things[i])
@@ -686,24 +686,24 @@ func TestDelete(t *testing.T) {
 }
 
 func TestDeleteWithComparator(t *testing.T) {
-	rt := NewTree(2, 3, 3)
+	rt := NewTree(3, 3)
 
 	type IDRect struct {
 		ID string
-		*Rect
+		*BBox
 	}
 
 	things := []*IDRect{
-		{"1", mustRect(Point{0, 0}, []float64{2, 1})},
-		{"2", mustRect(Point{3, 1}, []float64{1, 2})},
-		{"3", mustRect(Point{1, 2}, []float64{2, 2})},
-		{"4", mustRect(Point{8, 6}, []float64{1, 1})},
-		{"5", mustRect(Point{10, 3}, []float64{1, 2})},
-		{"6", mustRect(Point{11, 7}, []float64{1, 1})},
-		{"7", mustRect(Point{0, 6}, []float64{1, 2})},
-		{"8", mustRect(Point{1, 6}, []float64{1, 2})},
-		{"9", mustRect(Point{0, 8}, []float64{1, 2})},
-		{"10", mustRect(Point{1, 8}, []float64{1, 2})},
+		{"1", mustBBox(Point{0, 0}, []float64{2, 1})},
+		{"2", mustBBox(Point{3, 1}, []float64{1, 2})},
+		{"3", mustBBox(Point{1, 2}, []float64{2, 2})},
+		{"4", mustBBox(Point{8, 6}, []float64{1, 1})},
+		{"5", mustBBox(Point{10, 3}, []float64{1, 2})},
+		{"6", mustBBox(Point{11, 7}, []float64{1, 1})},
+		{"7", mustBBox(Point{0, 6}, []float64{1, 2})},
+		{"8", mustBBox(Point{1, 6}, []float64{1, 2})},
+		{"9", mustBBox(Point{0, 8}, []float64{1, 2})},
+		{"10", mustBBox(Point{1, 8}, []float64{1, 2})},
 	}
 	for _, thing := range things {
 		rt.Insert(thing)
@@ -721,7 +721,7 @@ func TestDeleteWithComparator(t *testing.T) {
 	for len(things) > 0 {
 		i := rand.Int() % len(things)
 		// make a deep copy
-		copy := &IDRect{things[i].ID, &(*things[i].Rect)}
+		copy := &IDRect{things[i].ID, &(*things[i].BBox)}
 		things2 = append(things2, copy)
 
 		if !cmp(things[i], copy) {
@@ -747,24 +747,24 @@ func TestDeleteWithComparator(t *testing.T) {
 }
 
 func TestSearchIntersect(t *testing.T) {
-	rt := NewTree(2, 3, 3)
-	things := []*Rect{
-		mustRect(Point{0, 0}, []float64{2, 1}),
-		mustRect(Point{3, 1}, []float64{1, 2}),
-		mustRect(Point{1, 2}, []float64{2, 2}),
-		mustRect(Point{8, 6}, []float64{1, 1}),
-		mustRect(Point{10, 3}, []float64{1, 2}),
-		mustRect(Point{11, 7}, []float64{1, 1}),
-		mustRect(Point{2, 6}, []float64{1, 2}),
-		mustRect(Point{3, 6}, []float64{1, 2}),
-		mustRect(Point{2, 8}, []float64{1, 2}),
-		mustRect(Point{3, 8}, []float64{1, 2}),
+	rt := NewTree(3, 3)
+	things := []*BBox{
+		mustBBox(Point{0, 0}, []float64{2, 1}),
+		mustBBox(Point{3, 1}, []float64{1, 2}),
+		mustBBox(Point{1, 2}, []float64{2, 2}),
+		mustBBox(Point{8, 6}, []float64{1, 1}),
+		mustBBox(Point{10, 3}, []float64{1, 2}),
+		mustBBox(Point{11, 7}, []float64{1, 1}),
+		mustBBox(Point{2, 6}, []float64{1, 2}),
+		mustBBox(Point{3, 6}, []float64{1, 2}),
+		mustBBox(Point{2, 8}, []float64{1, 2}),
+		mustBBox(Point{3, 8}, []float64{1, 2}),
 	}
 	for _, thing := range things {
 		rt.Insert(thing)
 	}
 
-	bb := mustRect(Point{2, 1.5}, []float64{10, 5.5})
+	bb := mustBBox(Point{2, 1.5}, []float64{10, 5.5})
 	q := rt.SearchIntersect(bb)
 
 	expected := []int{1, 2, 3, 4, 6, 7}
@@ -779,24 +779,24 @@ func TestSearchIntersect(t *testing.T) {
 }
 
 func TestSearchIntersectWithLimit(t *testing.T) {
-	rt := NewTree(2, 3, 3)
-	things := []*Rect{
-		mustRect(Point{0, 0}, []float64{2, 1}),
-		mustRect(Point{3, 1}, []float64{1, 2}),
-		mustRect(Point{1, 2}, []float64{2, 2}),
-		mustRect(Point{8, 6}, []float64{1, 1}),
-		mustRect(Point{10, 3}, []float64{1, 2}),
-		mustRect(Point{11, 7}, []float64{1, 1}),
-		mustRect(Point{2, 6}, []float64{1, 2}),
-		mustRect(Point{3, 6}, []float64{1, 2}),
-		mustRect(Point{2, 8}, []float64{1, 2}),
-		mustRect(Point{3, 8}, []float64{1, 2}),
+	rt := NewTree(3, 3)
+	things := []*BBox{
+		mustBBox(Point{0, 0}, []float64{2, 1}),
+		mustBBox(Point{3, 1}, []float64{1, 2}),
+		mustBBox(Point{1, 2}, []float64{2, 2}),
+		mustBBox(Point{8, 6}, []float64{1, 1}),
+		mustBBox(Point{10, 3}, []float64{1, 2}),
+		mustBBox(Point{11, 7}, []float64{1, 1}),
+		mustBBox(Point{2, 6}, []float64{1, 2}),
+		mustBBox(Point{3, 6}, []float64{1, 2}),
+		mustBBox(Point{2, 8}, []float64{1, 2}),
+		mustBBox(Point{3, 8}, []float64{1, 2}),
 	}
 	for _, thing := range things {
 		rt.Insert(thing)
 	}
 
-	bb := mustRect(Point{2, 1.5}, []float64{10, 5.5})
+	bb := mustBBox(Point{2, 1.5}, []float64{10, 5.5})
 
 	// bbIntersects contains the indices of the rectangles that fall in
 	// the bounding box bb.
@@ -825,24 +825,24 @@ func TestSearchIntersectWithLimit(t *testing.T) {
 }
 
 func TestSearchIntersectWithTestFilter(t *testing.T) {
-	rt := NewTree(2, 3, 3)
-	things := []*Rect{
-		mustRect(Point{0, 0}, []float64{2, 1}),
-		mustRect(Point{3, 1}, []float64{1, 2}),
-		mustRect(Point{1, 2}, []float64{2, 2}),
-		mustRect(Point{8, 6}, []float64{1, 1}),
-		mustRect(Point{10, 3}, []float64{1, 2}),
-		mustRect(Point{11, 7}, []float64{1, 1}),
-		mustRect(Point{2, 6}, []float64{1, 2}),
-		mustRect(Point{3, 6}, []float64{1, 2}),
-		mustRect(Point{2, 8}, []float64{1, 2}),
-		mustRect(Point{3, 8}, []float64{1, 2}),
+	rt := NewTree(3, 3)
+	things := []*BBox{
+		mustBBox(Point{0, 0}, []float64{2, 1}),
+		mustBBox(Point{3, 1}, []float64{1, 2}),
+		mustBBox(Point{1, 2}, []float64{2, 2}),
+		mustBBox(Point{8, 6}, []float64{1, 1}),
+		mustBBox(Point{10, 3}, []float64{1, 2}),
+		mustBBox(Point{11, 7}, []float64{1, 1}),
+		mustBBox(Point{2, 6}, []float64{1, 2}),
+		mustBBox(Point{3, 6}, []float64{1, 2}),
+		mustBBox(Point{2, 8}, []float64{1, 2}),
+		mustBBox(Point{3, 8}, []float64{1, 2}),
 	}
 	for _, thing := range things {
 		rt.Insert(thing)
 	}
 
-	bb := mustRect(Point{2, 1.5}, []float64{10, 5.5})
+	bb := mustBBox(Point{2, 1.5}, []float64{10, 5.5})
 
 	// intersecting indexes are 1, 2, 6, 7, 3, 4
 	// rects which we do not filter out
@@ -851,7 +851,7 @@ func TestSearchIntersectWithTestFilter(t *testing.T) {
 	// this test filter will only pick the objects that match the specified indexes
 	// in things
 	objects := rt.SearchIntersect(bb, func(results []Spatial, object Spatial) (bool, bool) {
-		rect := object.(*Rect)
+		rect := object.(*BBox)
 
 		for _, a := range expected {
 			if rect == things[a] {
@@ -868,7 +868,7 @@ func TestSearchIntersectWithTestFilter(t *testing.T) {
 
 	actual := make([]int, 3)
 	for _, obj := range objects {
-		rect := obj.(*Rect)
+		rect := obj.(*BBox)
 		for i := range things {
 			if rect == things[i] {
 				actual = append(actual, i)
@@ -882,24 +882,24 @@ func TestSearchIntersectWithTestFilter(t *testing.T) {
 }
 
 func TestSearchIntersectNoResults(t *testing.T) {
-	rt := NewTree(2, 3, 3)
-	things := []*Rect{
-		mustRect(Point{0, 0}, []float64{2, 1}),
-		mustRect(Point{3, 1}, []float64{1, 2}),
-		mustRect(Point{1, 2}, []float64{2, 2}),
-		mustRect(Point{8, 6}, []float64{1, 1}),
-		mustRect(Point{10, 3}, []float64{1, 2}),
-		mustRect(Point{11, 7}, []float64{1, 1}),
-		mustRect(Point{2, 6}, []float64{1, 2}),
-		mustRect(Point{3, 6}, []float64{1, 2}),
-		mustRect(Point{2, 8}, []float64{1, 2}),
-		mustRect(Point{3, 8}, []float64{1, 2}),
+	rt := NewTree(3, 3)
+	things := []*BBox{
+		mustBBox(Point{0, 0}, []float64{2, 1}),
+		mustBBox(Point{3, 1}, []float64{1, 2}),
+		mustBBox(Point{1, 2}, []float64{2, 2}),
+		mustBBox(Point{8, 6}, []float64{1, 1}),
+		mustBBox(Point{10, 3}, []float64{1, 2}),
+		mustBBox(Point{11, 7}, []float64{1, 1}),
+		mustBBox(Point{2, 6}, []float64{1, 2}),
+		mustBBox(Point{3, 6}, []float64{1, 2}),
+		mustBBox(Point{2, 8}, []float64{1, 2}),
+		mustBBox(Point{3, 8}, []float64{1, 2}),
 	}
 	for _, thing := range things {
 		rt.Insert(thing)
 	}
 
-	bb := mustRect(Point{99, 99}, []float64{10, 5.5})
+	bb := mustBBox(Point{99, 99}, []float64{10, 5.5})
 	q := rt.SearchIntersect(bb)
 	if len(q) != 0 {
 		t.Errorf("SearchIntersect failed to return nil slice on failing query")
@@ -907,10 +907,10 @@ func TestSearchIntersectNoResults(t *testing.T) {
 }
 
 func TestSortEntries(t *testing.T) {
-	objs := []*Rect{
-		mustRect(Point{1, 1}, []float64{1, 1}),
-		mustRect(Point{2, 2}, []float64{1, 1}),
-		mustRect(Point{3, 3}, []float64{1, 1}),
+	objs := []*BBox{
+		mustBBox(Point{1, 1}, []float64{1, 1}),
+		mustBBox(Point{2, 2}, []float64{1, 1}),
+		mustBBox(Point{3, 3}, []float64{1, 1}),
 	}
 	entries := []entry{
 		entry{objs[2], nil, objs[2]},
@@ -927,14 +927,14 @@ func TestSortEntries(t *testing.T) {
 }
 
 func TestNearestNeighbor(t *testing.T) {
-	rt := NewTree(2, 3, 3)
-	things := []*Rect{
-		mustRect(Point{1, 1}, []float64{1, 1}),
-		mustRect(Point{1, 3}, []float64{1, 1}),
-		mustRect(Point{3, 2}, []float64{1, 1}),
-		mustRect(Point{-7, -7}, []float64{1, 1}),
-		mustRect(Point{7, 7}, []float64{1, 1}),
-		mustRect(Point{10, 2}, []float64{1, 1}),
+	rt := NewTree(3, 3)
+	things := []*BBox{
+		mustBBox(Point{1, 1}, []float64{1, 1}),
+		mustBBox(Point{1, 3}, []float64{1, 1}),
+		mustBBox(Point{3, 2}, []float64{1, 1}),
+		mustBBox(Point{-7, -7}, []float64{1, 1}),
+		mustBBox(Point{7, 7}, []float64{1, 1}),
+		mustBBox(Point{10, 2}, []float64{1, 1}),
 	}
 	for _, thing := range things {
 		rt.Insert(thing)
@@ -951,14 +951,14 @@ func TestNearestNeighbor(t *testing.T) {
 }
 
 func TestNearestNeighbors(t *testing.T) {
-	rt := NewTree(2, 3, 3)
-	things := []*Rect{
-		mustRect(Point{1, 1}, []float64{1, 1}),
-		mustRect(Point{-7, -7}, []float64{1, 1}),
-		mustRect(Point{1, 3}, []float64{1, 1}),
-		mustRect(Point{7, 7}, []float64{1, 1}),
-		mustRect(Point{10, 2}, []float64{1, 1}),
-		mustRect(Point{3, 3}, []float64{1, 1}),
+	rt := NewTree(3, 3)
+	things := []*BBox{
+		mustBBox(Point{1, 1}, []float64{1, 1}),
+		mustBBox(Point{-7, -7}, []float64{1, 1}),
+		mustBBox(Point{1, 3}, []float64{1, 1}),
+		mustBBox(Point{7, 7}, []float64{1, 1}),
+		mustBBox(Point{10, 2}, []float64{1, 1}),
+		mustBBox(Point{3, 3}, []float64{1, 1}),
 	}
 	for _, thing := range things {
 		rt.Insert(thing)

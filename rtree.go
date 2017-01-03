@@ -3,7 +3,7 @@
 // license that can be found in the LICENSE file.
 
 // Package rtreego is a library for efficiently storing and querying spatial data.
-package rtreego
+package rtree
 
 import (
 	"fmt"
@@ -19,10 +19,9 @@ func defaultComparator(obj1, obj2 Spatial) bool {
 }
 
 // Rtree represents an R-tree, a balanced search tree for storing and querying
-// spatial objects.  Dim specifies the number of spatial dimensions and
-// MinChildren/MaxChildren specify the minimum/maximum branching factors.
+// spatial objects. MinChildren/MaxChildren specify the minimum/maximum
+// branching factors.
 type Rtree struct {
-	Dim         int
 	MinChildren int
 	MaxChildren int
 	root        *node
@@ -31,8 +30,8 @@ type Rtree struct {
 }
 
 // NewTree creates a new R-tree instance.
-func NewTree(Dim, MinChildren, MaxChildren int) *Rtree {
-	rt := Rtree{Dim: Dim, MinChildren: MinChildren, MaxChildren: MaxChildren}
+func NewTree(MinChildren, MaxChildren int) *Rtree {
+	rt := Rtree{MinChildren: MinChildren, MaxChildren: MaxChildren}
 	rt.height = 1
 	rt.root = &node{}
 	rt.root.entries = []entry{}
@@ -69,7 +68,7 @@ func (n *node) String() string {
 
 // entry represents a spatial index record stored in a tree node.
 type entry struct {
-	bb    *Rect // bounding-box of all children of this entry
+	bb    *BBox // bounding-box of all children of this entry
 	child *node
 	obj   Spatial
 }
@@ -83,7 +82,7 @@ func (e entry) String() string {
 
 // Spatial is an interface for objects that can be stored in an Rtree and queried.
 type Spatial interface {
-	Bounds() *Rect
+	Bounds() *BBox
 }
 
 // Insertion
@@ -195,8 +194,8 @@ func (n *node) getEntry() *entry {
 }
 
 // computeBoundingBox finds the MBR of the children of n.
-func (n *node) computeBoundingBox() (bb *Rect) {
-	childBoxes := make([]*Rect, len(n.entries))
+func (n *node) computeBoundingBox() (bb *BBox) {
+	childBoxes := make([]*BBox, len(n.entries))
 	for i, e := range n.entries {
 		childBoxes[i] = e.bb
 	}
@@ -378,7 +377,7 @@ func (tree *Rtree) findLeaf(n *node, obj Spatial, cmp Comparator) *node {
 	}
 	// if not leaf, search all candidate subtrees
 	for _, e := range n.entries {
-		if e.bb.containsRect(obj.Bounds()) {
+		if e.bb.containsBBox(obj.Bounds()) {
 			leaf := tree.findLeaf(e.child, obj, cmp)
 			if leaf == nil {
 				continue
@@ -435,7 +434,7 @@ func (tree *Rtree) condenseTree(n *node) {
 // SearchIntersect returns all objects that intersect the specified rectangle.
 // Implemented per Section 3.1 of "R-trees: A Dynamic Index Structure for
 // Spatial Searching" by A. Guttman, Proceedings of ACM SIGMOD, p. 47-57, 1984.
-func (tree *Rtree) SearchIntersect(bb *Rect, filters ...Filter) []Spatial {
+func (tree *Rtree) SearchIntersect(bb *BBox, filters ...Filter) []Spatial {
 	return tree.searchIntersect([]Spatial{}, tree.root, bb, filters)
 }
 
@@ -445,7 +444,7 @@ func (tree *Rtree) SearchIntersect(bb *Rect, filters ...Filter) []Spatial {
 //
 // Kept for backwards compatibility, please use SearchIntersect with a
 // LimitFilter.
-func (tree *Rtree) SearchIntersectWithLimit(k int, bb *Rect) []Spatial {
+func (tree *Rtree) SearchIntersectWithLimit(k int, bb *BBox) []Spatial {
 	// backwards compatibility, previous implementation didn't limit results if
 	// k was negative.
 	if k < 0 {
@@ -454,7 +453,7 @@ func (tree *Rtree) SearchIntersectWithLimit(k int, bb *Rect) []Spatial {
 	return tree.SearchIntersect(bb, LimitFilter(k))
 }
 
-func (tree *Rtree) searchIntersect(results []Spatial, n *node, bb *Rect, filters []Filter) []Spatial {
+func (tree *Rtree) searchIntersect(results []Spatial, n *node, bb *BBox, filters []Filter) []Spatial {
 	for _, e := range n.entries {
 		if intersect(e.bb, bb) == nil {
 			continue
