@@ -160,7 +160,7 @@ func (bb *BBox) margin() float64 {
 
 // containsPoint tests whether p is located inside or on the boundary of bb.
 func (bb *BBox) containsPoint(p Point) bool {
-	return bb.min.X < p.X && bb.max.X > p.X && bb.min.Y < p.Y && bb.max.Y > p.Y
+	return bb.min.X <= p.X && bb.max.X >= p.X && bb.min.Y <= p.Y && bb.max.Y >= p.Y
 }
 
 // containsBBox tests whether bb2 is is located inside bb.
@@ -171,33 +171,7 @@ func (bb *BBox) containsBBox(bb2 *BBox) bool {
 // intersect computes the intersection of two bounding boxes.  If no
 // intersection exists, the intersection is nil.
 func intersect(bb1, bb2 *BBox) *BBox {
-	// There are four cases of overlap:
-	//
-	//     1.  a1------------b1
-	//              a2------------b2
-	//              p--------q
-	//
-	//     2.       a1------------b1
-	//         a2------------b2
-	//              p--------q
-	//
-	//     3.  a1-----------------b1
-	//              a2-------b2
-	//              p--------q
-	//
-	//     4.       a1-------b1
-	//         a2-----------------b2
-	//              p--------q
-	//
-	// There are only two cases of non-overlap:
-	//
-	//     1. a1------b1
-	//                    a2------b2
-	//
-	//     2.             a1------b1
-	//        a2------b2
-
-	if bb1.max.X < bb2.min.X || bb2.max.X < bb1.min.X || bb1.max.Y < bb2.min.Y || bb2.max.Y < bb2.min.Y {
+	if bb1.max.X <= bb2.min.X || bb2.max.X <= bb1.min.X || bb1.max.Y <= bb2.min.Y || bb2.max.Y < bb1.min.Y {
 		return nil
 	}
 	return &BBox{
